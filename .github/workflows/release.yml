@@ -41,7 +41,9 @@ jobs:
           echo "Building ACDE v$VERSION ($DATE)"
 
       - name: Decode keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/acde-release.keystore
+        run: echo "$KEYSTORE" | tr -d '\n\r' | base64 -d > android/app/acde-release.keystore
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
 
       - name: Build release APK
         env:
