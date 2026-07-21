@@ -1,97 +1,105 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# ACDE — Android Controller Dongle Enabler
 
-# Getting Started
+**Automatically wakes your 8BitDo controller when Android can't do it on its own.**
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Some Android builds fail to properly probe the kernel HID driver when an 8BitDo USB dongle connects. The dongle appears in the system, USB/OTG permission is granted but the controller never responds.
 
-## Step 1: Start Metro
+ACDE detects the dongle, runs the exact USB HID initialization sequence the Linux kernel would use, and hands the device back. From that point on, the controller works system-wide — in any emulator, game, or app.
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## Supported Devices
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+| Controller | VID:PID | Status |
+|---|---|---|
+| 8BitDo Ultimate 2C Wireless (USB dongle) | `11720:12554` | ✅ |
+| Multiple dongles simultaneously | — | ✅ |
 
-```sh
-# Using npm
-npm start
+> The wake procedure is device-specific. Adding more controllers requires implementing their init sequence in `DongleWaker.kt`.
 
-# OR using Yarn
-yarn start
+## How It Works
+
+### First time (one click)
+
+1. Install the app
+2. Plug in the dongle and power on your controller
+3. Android shows: _"Allow ACDE to access 8BitDo Ultimate 2C?"_
+4. Tap **OK**.
+5. Done. Your controller works everywhere.
+
+### Every time after that
+
+Reconnect the controller, reboot your phone, plug into a different hub — it doesn't matter. The app's broadcast receiver detects the dongle, runs the USB initialization sequence on a background thread, and hands the device back to the kernel. No app launch needed.
+
+### Multiple controllers
+
+Plug in up to 4 dongles. Each asks for permission once, then works independently.
+
+### Why does it ask for permission every time I reconnect?
+
+This is normal Android behavior — not an ACDE bug. Android ties USB permissions to a device's unique identity (VID + PID + serial number). The 8BitDo dongle uses a **dynamic serial number** that changes on each power cycle, so Android sees it as a new device and requires a fresh grant. USB hubs can also alter the identity when you move ports or power-cycle the hub. ACDE auto-requests permission as soon as the device connects, so the dialog pops up immediately — just tap OK.
+
+### Why does the controller name change in the tester?
+
+The 8BitDo dongle exposes multiple interfaces — keyboard and gamepad. Android registers both as separate input devices with different IDs. Gamepad events can arrive from either one, and the tester's card title shows whichever name matches the event's device ID at that moment. This is cosmetic — the controller works regardless.
+
+### Setting up emulators and games
+
+When configuring emulators like Eden, NetherSX2, or Winlator, you'll see two entries for the 8BitDo controller in the input device list:
+
+- `8BitDo Ultimate 2C Wireless Controller` ← **Pick this one**
+- `8BitDo 8BitDo Ultimate 2C Wireless Controller Keyboard` ← Ignore this
+
+Always choose the entry **without "Keyboard" in the name**. If your buttons and sticks respond, you picked the right one. ACDE only initializes the gamepad interface — the keyboard entry is just Android registering the dongle's other USB interface and won't work as a controller.
+
+## What's Happening Under the Hood
+
+The 8BitDo USB dongle firmware requires a specific HID initialization sequence to start transmitting gamepad data. The Linux kernel normally handles this, but on many Android builds the HID driver doesn't probe correctly.
+
+ACDE replicates the exact sequence the kernel would use:
+
+1. Claim the vendor-specific interface (#0) and HID gamepad interface (#2)
+2. Send `SET_IDLE`, `GET_DESCRIPTOR`, `SET_REPORT` via USB control transfers
+3. Send an interrupt OUT payload to wake the firmware
+4. Read input reports to confirm the device is alive
+5. Release all interfaces — the kernel HID driver rebinds and creates `/dev/input/eventX`
+
+The keyboard interface (#1) is never touched. It keeps working normally.
+
+This sequence was captured via `usbmon` from a working Linux desktop session.
+
+## Architecture
+
+```
+AndroidManifest ──► UsbWakeReceiver (manifest) ──► DongleWaker (USB init)
+     │                        │
+     ▼                        ▼
+  MainActivity          UsbWakeModule (RN bridge)
+  (gamepad events)          │
+     │                      ▼
+     └────────────►  App.tsx (UI + tester)
 ```
 
-## Step 2: Build and run your app
+| Component | What it does |
+|---|---|
+| `DongleWaker` | USB HID init sequence on a background thread |
+| `UsbWakeReceiver` | Manifest broadcast receiver — catches `USB_DEVICE_ATTACHED`, requests permission, triggers wake |
+| `UsbWakeModule` | React Native Native Module — bridges USB status to JS, emits gamepad events |
+| `MainActivity` | Forwards hardware `KeyEvent`/`MotionEvent` to the JS tester UI |
+| `App.tsx` | Status indicator, permission button, per-gamepad tester, debug logs |
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## Tech Stack
 
-### Android
+- React Native 0.86 (Bare Workflow, New Architecture)
+- Kotlin native modules
+- No native libraries beyond what RN ships
+- Minimum SDK 24, target SDK 36
 
-```sh
-# Using npm
-npm run android
+## Dev
 
-# OR using Yarn
-yarn android
+```bash
+bun install
+bunx react-native run-android
 ```
 
-### iOS
+## License
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+MIT

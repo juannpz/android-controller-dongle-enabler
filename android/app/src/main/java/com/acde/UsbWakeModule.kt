@@ -21,8 +21,6 @@ class UsbWakeModule(reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "UsbWakeModule"
         private const val TAG = "UsbWakeModule"
-        private const val TARGET_VENDOR = 11720
-        private const val TARGET_PRODUCT = 12554
         private const val ACTION_USB_PERMISSION = "com.acde.USB_PERMISSION"
 
         @Volatile private var instance: UsbWakeModule? = null
@@ -229,8 +227,11 @@ class UsbWakeModule(reactContext: ReactApplicationContext) :
 
     // ---- Filters ----
 
-    private fun isTarget(d: android.hardware.usb.UsbDevice?) = d != null && d.vendorId == TARGET_VENDOR && d.productId == TARGET_PRODUCT
-    private fun findAll(mgr: UsbManager) = mgr.deviceList.values.filter { it.vendorId == TARGET_VENDOR && it.productId == TARGET_PRODUCT }
+    private fun isTarget(d: android.hardware.usb.UsbDevice?) =
+        d != null && DeviceRegistry.isSupportedDevice(d)
+
+    private fun findAll(mgr: UsbManager) =
+        mgr.deviceList.values.filter { DeviceRegistry.isSupportedDevice(it) }
 
     @Suppress("DEPRECATION")
     private fun extractDevice(intent: Intent): android.hardware.usb.UsbDevice? =

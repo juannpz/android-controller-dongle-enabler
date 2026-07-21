@@ -1,0 +1,83 @@
+name: Release APK
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Extract version & date
+        id: meta
+        run: |
+          VERSION=$(grep 'versionName' android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          DATE=$(date +%Y-%m-%d)
+          APK_NAME="ACDE-v${VERSION}-${DATE}.apk"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "Building ACDE v$VERSION ($DATE)"
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/acde-release.keystore
+
+      - name: Build release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk "${{ steps.meta.outputs.apk_name }}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log ${PREV_TAG}..HEAD --pretty=format:'- %s' --no-merges)
+          else
+            CHANGES=$(git log --pretty=format:'- %s' --no-merges)
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "${CHANGES:-(initial release)}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: ACDE v${{ steps.meta.outputs.version }} — ${{ steps.meta.outputs.date }}
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.changes }}
+          files: ${{ steps.meta.outputs.apk_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

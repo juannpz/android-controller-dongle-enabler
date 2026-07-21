@@ -13,8 +13,6 @@ class UsbWakeReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "UsbWakeReceiver"
-        private const val TARGET_VENDOR = 11720
-        private const val TARGET_PRODUCT = 12554
         const val ACTION_USB_PERMISSION = "com.acde.USB_PERMISSION"
 
         // Prevent duplicate permission dialogs during dongle power-on
@@ -27,7 +25,7 @@ class UsbWakeReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val device = extractDevice(intent) ?: return
-        if (device.vendorId != TARGET_VENDOR || device.productId != TARGET_PRODUCT) return
+        if (!DeviceRegistry.isSupportedDevice(device)) return
 
         val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
 
