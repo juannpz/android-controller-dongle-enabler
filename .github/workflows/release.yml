@@ -40,8 +40,15 @@ jobs:
           echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
           echo "Building ACDE v$VERSION ($DATE)"
 
-      - name: Decode keystore
-        run: printf '%s' "$KEYSTORE" | base64 -d > android/app/acde-release.keystore
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore android/app/acde-release.keystore \
+            -alias "${{ secrets.KEY_ALIAS }}" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            -dname "CN=ACDE" -noprompt
         env:
           KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
 
