@@ -13,7 +13,7 @@ ACDE detects the dongle, runs the exact USB HID initialization sequence the Linu
 | 8BitDo Ultimate 2C Wireless (USB dongle) | `11720:12554` | ✅ |
 | Multiple dongles simultaneously | — | ✅ |
 
-> The wake procedure is device-specific. Adding more controllers requires implementing their init sequence in `DongleWaker.kt`.
+> The wake procedure is device-specific. Adding more controllers: add an entry in `DeviceRegistry.kt`, create a waker object, and add the VID:PID to `usb_device_filter.xml`.
 
 ## How It Works
 
@@ -69,18 +69,24 @@ This sequence was captured via `usbmon` from a working Linux desktop session.
 ## Architecture
 
 ```
-AndroidManifest ──► UsbWakeReceiver (manifest) ──► DongleWaker (USB init)
-     │                        │
-     ▼                        ▼
-  MainActivity          UsbWakeModule (RN bridge)
-  (gamepad events)          │
-     │                      ▼
-     └────────────►  App.tsx (UI + tester)
+AndroidManifest
+     │
+     ├──► UsbWakeReceiver  ──► DongleWaker  ──► DeviceRegistry  ──► device-specific waker
+     │    (catches USB        (dispatcher)      (VID:PID → waker map)   (e.g. EightBitDo…)
+     │     attach events)
+     │
+     ├──► MainActivity  ──► UsbWakeModule  ──► App.tsx
+     │    (forwards HW        (RN bridge)        (UI, status, tester)
+     │     gamepad events)
+     │
+     └──► usb_device_filter.xml  ──► Android auto-shows permission dialog
 ```
 
 | Component | What it does |
 |---|---|
-| `DongleWaker` | USB HID init sequence on a background thread |
+| `DeviceRegistry` | Maps VID:PID pairs to their device-specific wakers |
+| `DongleWaker` | Dispatcher — looks up the device in `DeviceRegistry` and calls the right waker |
+| `EightBitDoUltimate2CWaker` | The actual USB HID init sequence for the 8BitDo Ultimate 2C (captured via `usbmon`) |
 | `UsbWakeReceiver` | Manifest broadcast receiver — catches `USB_DEVICE_ATTACHED`, requests permission, triggers wake |
 | `UsbWakeModule` | React Native Native Module — bridges USB status to JS, emits gamepad events |
 | `MainActivity` | Forwards hardware `KeyEvent`/`MotionEvent` to the JS tester UI |
