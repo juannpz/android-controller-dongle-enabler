@@ -206,6 +206,8 @@ class UsbWakeModule(reactContext: ReactApplicationContext) :
                 val d = InputDevice.getDevice(id) ?: continue
                 val s = d.sources
                 if ((s and InputDevice.SOURCE_GAMEPAD) == 0 && (s and InputDevice.SOURCE_JOYSTICK) == 0) continue
+                if (d.isVirtual) continue
+                if (!DeviceRegistry.isSupported(d.vendorId, d.productId)) continue
                 arr.pushMap(Arguments.createMap().apply {
                     putInt("id", d.id); putString("name", d.name ?: "?")
                     putInt("vendorId", d.vendorId); putInt("productId", d.productId)
