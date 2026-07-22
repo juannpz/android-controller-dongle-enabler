@@ -21,8 +21,8 @@ ACDE detects the dongle, runs the exact USB HID initialization sequence the Linu
 
 1. Install the app
 2. Plug in the dongle and power on your controller
-3. Android shows: _"Allow ACDE to access 8BitDo Ultimate 2C?"_
-4. Tap **OK**.
+3. Android shows a permission dialog for the 8BitDo controller
+4. Tap the affirmative button and check the **"always" / "use by default"** checkbox
 5. Done. Your controller works everywhere.
 
 ### Every time after that
